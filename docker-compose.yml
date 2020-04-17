@@ -1,0 +1,38 @@
+version: '3.5'
+services:
+  kdc.local:
+    hostname: kdc
+    domainname: kdc.local
+    container_name: kdc
+    networks:
+      - local
+    build: kdc
+    ports:
+    - "88:8888"
+    - "749:8749"
+    volumes:
+    - .:/krb5
+  client.local:
+    hostname: client 
+    domainname: client.local
+    container_name: client
+    networks:
+      - local
+    build: client
+    volumes:
+    - .:/krb5
+  web.local:
+    hostname: web
+    domainname: web.local
+    container_name: web
+    networks:
+      - local
+    build: web
+    volumes:
+    - .:/krb5
+    ports:
+    - "8080:8080"
+
+networks:
+  local:
+    name: local

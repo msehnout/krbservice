@@ -45,11 +45,11 @@ func main() {
 
 	l := log.New(os.Stderr, "GOKRB5 Service: ", log.Ldate|log.Ltime|log.Lshortfile)
 	srv := service.Logger(l)
-	srvName := service.SName("HTTP/web.local")
+	//srvName := service.SName("HTTP/web.local")
 
 	http.HandleFunc("/hello", hello)
 	h := http.HandlerFunc(krb5hello)
-	http.Handle("/krb5hello", spnego.SPNEGOKRB5Authenticate(h, kt, srvName, srv))
+	http.Handle("/krb5hello", spnego.SPNEGOKRB5Authenticate(h, kt, srv))
 
 	fmt.Println("Running server")
 	_ = http.ListenAndServe(":80", nil)

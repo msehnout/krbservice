@@ -1,2 +1,3 @@
 web/main
 web/run/keytab
+*/.vagrant/*

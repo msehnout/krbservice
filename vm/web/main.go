@@ -2,14 +2,13 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
-	"os"
 
 	"github.com/jcmturner/gokrb5/v8/keytab"
-	"github.com/jcmturner/gokrb5/v8/service"
 	"github.com/jcmturner/gokrb5/v8/spnego"
+	"github.com/julienschmidt/httprouter"
 )
 
 func dumpRequest(r *http.Request) {
@@ -20,14 +19,38 @@ func dumpRequest(r *http.Request) {
 	fmt.Println(string(requestDump))
 }
 
-func hello(w http.ResponseWriter, r *http.Request) {
+func Index(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
 	dumpRequest(r)
-	_, _ = fmt.Fprintf(w, "Hello, you are not authenticated.\n")
+	_, _ = fmt.Fprintf(w, "Hello, you are authenticated.\n")
 }
 
-func krb5hello(w http.ResponseWriter, r *http.Request) {
+func Hello(w http.ResponseWriter, r *http.Request, params httprouter.Params) {
 	dumpRequest(r)
-	_, _ = fmt.Fprintf(w, "Hello, you used Kerberos authentication.\n")
+	_, _ = fmt.Fprintf(w, "Hello, you are authenticated and this is the name: %s.\n", params.ByName("name"))
+}
+
+type API struct {
+	keytab *keytab.Keytab
+	router *httprouter.Router
+}
+
+func (api *API) Serve(listener net.Listener) error {
+	server := http.Server{Handler: api}
+
+	err := server.Serve(listener)
+	if err != nil && err != http.ErrServerClosed {
+		return err
+	}
+
+	return nil
+}
+
+// ServeHTTP logs the request, sets content-type, and forwards the request to appropriate handler
+func (api *API) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	handler := spnego.SPNEGOKRB5Authenticate(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		api.router.ServeHTTP(writer, request)
+	}), api.keytab)
+	handler.ServeHTTP(writer, request)
 }
 
 func main() {
@@ -38,13 +61,18 @@ func main() {
 	js, _ := kt.JSON()
 	fmt.Println("keytab: ", js)
 
-	l := log.New(os.Stderr, "GOKRB5 Service: ", log.Ldate|log.Ltime|log.Lshortfile)
-	srv := service.Logger(l)
+	router := httprouter.New()
+	router.GET("/", Index)
+	router.GET("/hello/:name", Hello)
 
-	http.HandleFunc("/hello", hello)
-	h := http.HandlerFunc(krb5hello)
-	http.Handle("/krb5hello", spnego.SPNEGOKRB5Authenticate(h, kt, srv))
+	api := API{
+		keytab: kt,
+		router: router,
+	}
 
-	fmt.Println("Running server")
-	_ = http.ListenAndServe(":80", nil)
+	ln, err := net.Listen("tcp", ":80")
+	if err != nil {
+		panic(err)
+	}
+	_ = api.Serve(ln)
 }

@@ -5,7 +5,7 @@ $script = <<-'SCRIPT'
 
 rpm --import https://packages.microsoft.com/keys/microsoft.asc
 sh -c 'echo -e "[code]\nname=Visual Studio Code\nbaseurl=https://packages.microsoft.com/yumrepos/vscode\nenabled=1\ngpgcheck=1\ngpgkey=https://packages.microsoft.com/keys/microsoft.asc" > /etc/yum.repos.d/vscode.repo'
-dnf -y install krb5-workstation krb5-server golang tmux code
+dnf -y install krb5-workstation krb5-server krb5-devel golang tmux code
 bash /vagrant/init-kdc.sh
 cp /vagrant/kdc.conf /var/kerberos/krb5kdc/kdc.conf
 cp /vagrant/krb5.conf /etc/krb5.conf

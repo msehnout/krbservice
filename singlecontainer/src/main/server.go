@@ -11,9 +11,25 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httputil"
 )
 
+func dumpRequest(r *http.Request) {
+	requestDump, err := httputil.DumpRequest(r, true)
+	if err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println(string(requestDump))
+}
+
 func handle(w http.ResponseWriter, r *http.Request) {
+	dumpRequest(r)
+	auth := r.Header.Get("Authorization")
+	if auth == "" {
+		w.Header().Set("WWW-Authenticate", "Negotiate")
+		w.WriteHeader(http.StatusUnauthorized)
+	}
+
 	a := "aaa"
 	b := "bbb"
 	ca := C.CString(a)

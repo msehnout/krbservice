@@ -1,16 +1,18 @@
 package main
 
-// #include <stdio.h>
-// #include <stdlib.h>
-// #include <string.h>
-// #include <gssapi/gssapi.h>
+/*
+#cgo LDFLAGS: -lgssapi_krb5
+#include <gssapi/gssapi.h>
+*/
 import "C"
+
 import (
 	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httputil"
+	"unsafe"
 )
 
 func dumpRequest(r *http.Request) {
@@ -20,6 +22,12 @@ func dumpRequest(r *http.Request) {
 	}
 	fmt.Println(string(requestDump))
 }
+
+/*
+func loadCredentials() C.gss_cred_id_t {
+	// TODO: load keytab into cred_id_t
+}
+*/
 
 func handle(w http.ResponseWriter, r *http.Request) {
 	dumpRequest(r)
@@ -45,18 +53,23 @@ func handle(w http.ResponseWriter, r *http.Request) {
 
 	var contextHdl C.gss_ctx_id_t = C.GSS_C_NO_CONTEXT
 	var minStat C.OM_uint32
+	var outputToken C.gss_buffer_t
+	var retFlags C.OM_uint32 = 0
 
+	// https://tools.ietf.org/html/rfc2744.html#section-5.1
 	majStat := C.gss_accept_sec_context(&minStat,
-		&contextHdl,    // If I don't need to keep the context for further calls, this should be fine
-		cred_hdl,       // I think I need to load keytab here somehow
-		input_token,    // This is what I've got from the client
-		input_bindings, // No idea yet
-		&client_name,   // No idea yet
-		&mech_type,     // No idea yet
-		output_token,   // No idea yet
-		&ret_flags,     // No idea yet
-		&time_rec,      // No idea yet
-		&deleg_cred)    // No idea yet
+		&contextHdl,                 // If I don't need to keep the context for further calls, this should be fine
+		cred_hdl,                    // I think I need to load keytab here somehow
+		input_token,                 // This is what I've got from the client
+		C.GSS_C_NO_CHANNEL_BINDINGS, // input_chan_bindings
+		C.NULL,                      // src_name
+		C.NULL,                      // mech_type
+		// token to be passed back to the caller, but since I don't implement support for keeping the context,
+		// I cannot handle it. Needs to be released with call to gss_release_buffer()
+		outputToken,
+		unsafe.Pointer(&retFlags), // ret_flags, allows for further configuration
+		C.NULL,                    // time_rec
+		C.NULL)                    // delegated_cred_handle
 
 	io.WriteString(w, "aaabbb")
 }

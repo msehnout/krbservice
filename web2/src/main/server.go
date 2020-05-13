@@ -12,8 +12,16 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
-	"unsafe"
 )
+
+/*
+
+# TODO:
+ * Function to load the keytab into cred_id_t
+ * Handle return values from call to gss_accept_sec_context
+ * Load the library dynamically? Isn't it possible to let the linker do this for me?
+
+*/
 
 func dumpRequest(r *http.Request) {
 	requestDump, err := httputil.DumpRequest(r, true)
@@ -54,7 +62,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	var contextHdl C.gss_ctx_id_t = C.GSS_C_NO_CONTEXT
 	var minStat C.OM_uint32
 	var outputToken C.gss_buffer_t
-	var retFlags C.OM_uint32 = 0
+	var retFlags C.uint = 0
 
 	// https://tools.ietf.org/html/rfc2744.html#section-5.1
 	majStat := C.gss_accept_sec_context(&minStat,
@@ -62,14 +70,14 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		cred_hdl,                    // I think I need to load keytab here somehow
 		input_token,                 // This is what I've got from the client
 		C.GSS_C_NO_CHANNEL_BINDINGS, // input_chan_bindings
-		C.NULL,                      // src_name
-		C.NULL,                      // mech_type
+		(*C.gss_name_t)(C.NULL),     // src_name
+		(*C.gss_OID)(C.NULL),        // mech_type
 		// token to be passed back to the caller, but since I don't implement support for keeping the context,
 		// I cannot handle it. Needs to be released with call to gss_release_buffer()
 		outputToken,
-		unsafe.Pointer(&retFlags), // ret_flags, allows for further configuration
-		C.NULL,                    // time_rec
-		C.NULL)                    // delegated_cred_handle
+		(*C.uint)(&retFlags),       // ret_flags, allows for further configuration
+		(*C.uint)(C.NULL),          // time_rec
+		(*C.gss_cred_id_t)(C.NULL)) // delegated_cred_handle
 
 	io.WriteString(w, "aaabbb")
 }

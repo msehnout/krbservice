@@ -87,24 +87,28 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	// code with a WWW-Authenticate header containing the gssapi-data.
 
 	// 10: because that's the length of 'Negotiate '
-	fmt.Println("Header base64:", auth[10:])
+	// log.Println("Header base64:", auth[10:])
 	// TODO: use something better then 10:
 	inputTokenBase64 := []byte(auth[10:])
-	var inputTokenBytes []byte
+	var inputTokenBytes []byte = make([]byte, 4096)
+	log.Println("Decoding header")
 	_, err := base64.StdEncoding.Decode(inputTokenBytes, inputTokenBase64)
 	if err != nil {
-		fmt.Printf("Error decoding input token: %s ", err.Error())
+		log.Printf("Error decoding input token: %s ", err.Error())
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
 	var minStat C.OM_uint32
 	var contextHdl C.gss_ctx_id_t = C.GSS_C_NO_CONTEXT
-	var credHdl C.gss_cred_id_t = loadCredentials("/dev/null")
+	log.Println("Loading credentials")
+	var credHdl C.gss_cred_id_t = loadCredentials("/tmp/keytab")
+	log.Println("Converting input token")
 	var inputToken C.gss_buffer_t = byteArrayToGssBuffer(inputTokenBytes)
 	var outputToken C.gss_buffer_t
 	var retFlags C.uint = 0
 
+	log.Println("Calling gss accept sec context")
 	// https://tools.ietf.org/html/rfc2744.html#section-5.1
 	majStat := C.gss_accept_sec_context(&minStat,
 		&contextHdl,                 // If I don't need to keep the context for further calls, this should be fine
@@ -131,6 +135,6 @@ func handle(w http.ResponseWriter, r *http.Request) {
 func main() {
 	portNumber := "9000"
 	http.HandleFunc("/", handle)
-	fmt.Println("Server listening on port ", portNumber)
+	log.Println("Server listening on port ", portNumber)
 	http.ListenAndServe(":"+portNumber, nil)
 }

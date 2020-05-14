@@ -4,6 +4,7 @@ package main
 #cgo LDFLAGS: -lgssapi_krb5
 #include <stdlib.h>
 #include <gssapi/gssapi.h>
+#include <gssapi/gssapi_ext.h>
 
 gss_buffer_t GssBufferTypeFromVoidPtr(void *buffer, size_t length) {
 	// https://tools.ietf.org/html/rfc2744.html#section-3.2
@@ -23,6 +24,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"unsafe"
@@ -45,11 +48,29 @@ func dumpRequest(r *http.Request) {
 	fmt.Println(string(requestDump))
 }
 
-/*
-func loadCredentials() C.gss_cred_id_t {
-	// TODO: load keytab into cred_id_t
+func byteArrayToGssBuffer(buffer []byte) C.gss_buffer_t {
+	return C.GssBufferTypeFromVoidPtr(unsafe.Pointer(&buffer), (C.size_t)(len(buffer)))
 }
-*/
+
+func loadCredentials(filename string) C.gss_cred_id_t {
+	// https://web.mit.edu/kerberos/krb5-devel/doc/appdev/gssapi.html#importing-and-exporting-credentials
+	content, err := ioutil.ReadFile(filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	var majStat C.OM_uint32
+	var minStat C.OM_uint32
+	var inputToken C.gss_buffer_t = byteArrayToGssBuffer(content)
+	var credHandle C.gss_cred_id_t
+
+	majStat = C.gss_import_cred(&minStat, inputToken, &credHandle)
+
+	log.Println("Major status:", majStat)
+	log.Println("Minor status:", minStat)
+
+	return credHandle
+}
 
 func handle(w http.ResponseWriter, r *http.Request) {
 	dumpRequest(r)
@@ -70,23 +91,24 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	// TODO: use something better then 10:
 	inputTokenBase64 := []byte(auth[10:])
 	var inputTokenBytes []byte
-	n, err := base64.StdEncoding.Decode(inputTokenBytes, inputTokenBase64)
+	_, err := base64.StdEncoding.Decode(inputTokenBytes, inputTokenBase64)
 	if err != nil {
 		fmt.Printf("Error decoding input token: %s ", err.Error())
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	var contextHdl C.gss_ctx_id_t = C.GSS_C_NO_CONTEXT
 	var minStat C.OM_uint32
-	var inputToken C.gss_buffer_t = C.GssBufferTypeFromVoidPtr(unsafe.Pointer(&inputTokenBytes), (C.size_t)(len(inputTokenBytes)))
+	var contextHdl C.gss_ctx_id_t = C.GSS_C_NO_CONTEXT
+	var credHdl C.gss_cred_id_t = loadCredentials("/dev/null")
+	var inputToken C.gss_buffer_t = byteArrayToGssBuffer(inputTokenBytes)
 	var outputToken C.gss_buffer_t
 	var retFlags C.uint = 0
 
 	// https://tools.ietf.org/html/rfc2744.html#section-5.1
 	majStat := C.gss_accept_sec_context(&minStat,
 		&contextHdl,                 // If I don't need to keep the context for further calls, this should be fine
-		cred_hdl,                    // I think I need to load keytab here somehow
+		credHdl,                     // I think I need to load keytab here somehow
 		inputToken,                  // This is what I've got from the client
 		C.GSS_C_NO_CHANNEL_BINDINGS, // input_chan_bindings
 		(*C.gss_name_t)(C.NULL),     // src_name
@@ -97,6 +119,11 @@ func handle(w http.ResponseWriter, r *http.Request) {
 		(*C.uint)(&retFlags),       // ret_flags, allows for further configuration
 		(*C.uint)(C.NULL),          // time_rec
 		(*C.gss_cred_id_t)(C.NULL)) // delegated_cred_handle
+
+	log.Println("Major status:", majStat)
+	log.Println("Minor status:", minStat)
+
+	C.FreeGssBufferType(inputToken)
 
 	io.WriteString(w, "aaabbb")
 }

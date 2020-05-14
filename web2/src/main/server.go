@@ -49,11 +49,12 @@ func dumpRequest(r *http.Request) {
 }
 
 func byteArrayToGssBuffer(buffer []byte) C.gss_buffer_t {
-	return C.GssBufferTypeFromVoidPtr(unsafe.Pointer(&buffer), (C.size_t)(len(buffer)))
+	return C.GssBufferTypeFromVoidPtr(unsafe.Pointer(&buffer[0]), (C.size_t)(len(buffer)))
 }
 
 func loadCredentials(filename string) C.gss_cred_id_t {
 	// https://web.mit.edu/kerberos/krb5-devel/doc/appdev/gssapi.html#importing-and-exporting-credentials
+	log.Println("Reading keytab")
 	content, err := ioutil.ReadFile(filename)
 	if err != nil {
 		log.Fatal(err)
@@ -61,9 +62,11 @@ func loadCredentials(filename string) C.gss_cred_id_t {
 
 	var majStat C.OM_uint32
 	var minStat C.OM_uint32
+	log.Println("Converting keytab into buffer")
 	var inputToken C.gss_buffer_t = byteArrayToGssBuffer(content)
 	var credHandle C.gss_cred_id_t
 
+	log.Println("Calling gss import cred")
 	majStat = C.gss_import_cred(&minStat, inputToken, &credHandle)
 
 	log.Println("Major status:", majStat)

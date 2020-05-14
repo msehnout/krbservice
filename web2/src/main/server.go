@@ -179,6 +179,12 @@ func handle(w http.ResponseWriter, r *http.Request, credHdl C.gss_cred_id_t) {
 
 	reportGSSStatus(majStat, "There was an error in accepting the security context")
 
+	if majStat&C.GSS_S_COMPLETE != 0 {
+		log.Println("Successfully authenticated")
+	} else {
+		log.Println("Authentication failed")
+	}
+
 	C.FreeGssBufferType(inputToken)
 
 	io.WriteString(w, "aaabbb")

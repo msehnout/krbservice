@@ -2,7 +2,20 @@ package main
 
 /*
 #cgo LDFLAGS: -lgssapi_krb5
+#include <stdlib.h>
 #include <gssapi/gssapi.h>
+
+gss_buffer_t GssBufferTypeFromVoidPtr(void *buffer, size_t length) {
+	// https://tools.ietf.org/html/rfc2744.html#section-3.2
+	gss_buffer_t ptr = (gss_buffer_t)malloc(sizeof(gss_buffer_desc));
+	ptr->length = length;
+	ptr->value = buffer;
+	return ptr;
+}
+
+void FreeGssBufferType(gss_buffer_t buffer) {
+	free(buffer);
+}
 */
 import "C"
 
@@ -12,6 +25,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httputil"
+	"unsafe"
 )
 
 /*
@@ -20,7 +34,7 @@ import (
  * Function to load the keytab into cred_id_t
  * Handle return values from call to gss_accept_sec_context
  * Load the library dynamically? Isn't it possible to let the linker do this for me?
-
+ * Use something better than 10:
 */
 
 func dumpRequest(r *http.Request) {
@@ -53,14 +67,19 @@ func handle(w http.ResponseWriter, r *http.Request) {
 
 	// 10: because that's the length of 'Negotiate '
 	fmt.Println("Header base64:", auth[10:])
-	inputToken, err := base64.StdEncoding.DecodeString(auth[10:])
+	// TODO: use something better then 10:
+	inputTokenBase64 := []byte(auth[10:])
+	var inputTokenBytes []byte
+	n, err := base64.StdEncoding.Decode(inputTokenBytes, inputTokenBase64)
 	if err != nil {
-		fmt.Printf("Error decoding string: %s ", err.Error())
+		fmt.Printf("Error decoding input token: %s ", err.Error())
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
-	fmt.Println("Header: ", string(inputToken))
 
 	var contextHdl C.gss_ctx_id_t = C.GSS_C_NO_CONTEXT
 	var minStat C.OM_uint32
+	var inputToken C.gss_buffer_t = C.GssBufferTypeFromVoidPtr(unsafe.Pointer(&inputTokenBytes), (C.size_t)(len(inputTokenBytes)))
 	var outputToken C.gss_buffer_t
 	var retFlags C.uint = 0
 
@@ -68,7 +87,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	majStat := C.gss_accept_sec_context(&minStat,
 		&contextHdl,                 // If I don't need to keep the context for further calls, this should be fine
 		cred_hdl,                    // I think I need to load keytab here somehow
-		input_token,                 // This is what I've got from the client
+		inputToken,                  // This is what I've got from the client
 		C.GSS_C_NO_CHANNEL_BINDINGS, // input_chan_bindings
 		(*C.gss_name_t)(C.NULL),     // src_name
 		(*C.gss_OID)(C.NULL),        // mech_type

@@ -51,6 +51,7 @@ import (
  * Load the library dynamically? Isn't it possible to let the linker do this for me?
  * Use something better than 10:
  * Fix either GssError or reportGSSStatus because one reports failure and the other one does not
+ * How do I get the authentication result?
 */
 
 func dumpRequest(r *http.Request) {
@@ -121,7 +122,7 @@ func loadCredentials(filename string) C.gss_cred_id_t {
 	return credHandle
 }
 
-func handle(w http.ResponseWriter, r *http.Request) {
+func handle(w http.ResponseWriter, r *http.Request, credHdl C.gss_cred_id_t) {
 	dumpRequest(r)
 	auth := r.Header.Get("Authorization")
 	if auth == "" {
@@ -150,8 +151,8 @@ func handle(w http.ResponseWriter, r *http.Request) {
 
 	var minStat C.OM_uint32
 	var contextHdl C.gss_ctx_id_t = C.GSS_C_NO_CONTEXT
-	log.Println("Loading credentials")
-	var credHdl C.gss_cred_id_t = loadCredentials("/tmp/keytab")
+	//log.Println("Loading credentials")
+	//var credHdl C.gss_cred_id_t = loadCredentials("/tmp/keytab")
 	log.Println("Converting input token")
 	var inputToken C.gss_buffer_t = byteArrayToGssBuffer(inputTokenBytes)
 	var outputToken C.gss_buffer_t
@@ -185,7 +186,11 @@ func handle(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	portNumber := "9000"
-	http.HandleFunc("/", handle)
+	log.Println("Loading credentials")
+	var credHdl C.gss_cred_id_t = loadCredentials("/tmp/keytab")
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		handle(w, r, credHdl)
+	})
 	log.Println("Server listening on port ", portNumber)
 	http.ListenAndServe(":"+portNumber, nil)
 }

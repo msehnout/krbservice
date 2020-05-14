@@ -17,6 +17,18 @@ gss_buffer_t GssBufferTypeFromVoidPtr(void *buffer, size_t length) {
 void FreeGssBufferType(gss_buffer_t buffer) {
 	free(buffer);
 }
+
+char *GssBufferGetValue(gss_buffer_desc *buf) {
+	return buf->value;
+}
+
+int GssBufferGetLength(gss_buffer_desc *buf) {
+	return buf->length;
+}
+
+OM_uint32 GssError(OM_uint32 maj_stat) {
+	return GSS_ERROR(maj_stat);
+}
 */
 import "C"
 
@@ -38,6 +50,7 @@ import (
  * Handle return values from call to gss_accept_sec_context
  * Load the library dynamically? Isn't it possible to let the linker do this for me?
  * Use something better than 10:
+ * Fix either GssError or reportGSSStatus because one reports failure and the other one does not
 */
 
 func dumpRequest(r *http.Request) {
@@ -50,6 +63,37 @@ func dumpRequest(r *http.Request) {
 
 func byteArrayToGssBuffer(buffer []byte) C.gss_buffer_t {
 	return C.GssBufferTypeFromVoidPtr(unsafe.Pointer(&buffer[0]), (C.size_t)(len(buffer)))
+}
+
+func reportGSSStatus(majStat C.OM_uint32, header string) {
+	var minStat C.OM_uint32
+	if C.GssError(majStat) != 0 {
+		log.Println(header)
+		var messageContext C.OM_uint32 = 0
+		var statusString C.gss_buffer_desc
+		// https://tools.ietf.org/html/rfc2744.html#section-5.11
+		// There might have been multiple errors, in such case it is necessary to call
+		// gss_display_status multiple times and keeping the context (messageContext)
+		for {
+			log.Println("Running gss display status")
+			majStat2 := C.gss_display_status(
+				&minStat,
+				majStat,
+				C.GSS_C_GSS_CODE,
+				C.GSS_C_NO_OID,
+				&messageContext,
+				&statusString,
+			)
+			log.Println("Major status 2:", majStat2)
+			C.gss_release_buffer(&minStat, &statusString)
+			msg := C.GoStringN(C.GssBufferGetValue(&statusString), C.GssBufferGetLength(&statusString))
+			log.Println("GSS Error:", msg)
+			if messageContext == 0 {
+				break
+			}
+		}
+	}
+
 }
 
 func loadCredentials(filename string) C.gss_cred_id_t {
@@ -71,6 +115,8 @@ func loadCredentials(filename string) C.gss_cred_id_t {
 
 	log.Println("Major status:", majStat)
 	log.Println("Minor status:", minStat)
+
+	reportGSSStatus(majStat, "There was an error in loading credentials")
 
 	return credHandle
 }
@@ -129,6 +175,8 @@ func handle(w http.ResponseWriter, r *http.Request) {
 
 	log.Println("Major status:", majStat)
 	log.Println("Minor status:", minStat)
+
+	reportGSSStatus(majStat, "There was an error in accepting the security context")
 
 	C.FreeGssBufferType(inputToken)
 
